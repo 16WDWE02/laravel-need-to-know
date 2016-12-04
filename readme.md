@@ -114,7 +114,7 @@ Notice the `Request $request` in the parenthesis of the store function. All the 
 
 ### Form CSRF token
 
-Forms in Laravel are easy. There's just one extra thing every form needs, and that's a `csrf_field()`.
+Forms in Laravel are typical HTML forms with inputs and name attributes. There's just one extra thing every form needs, and that's a `csrf_field()`.
 
 Imagine the following scenario:
 
@@ -130,7 +130,7 @@ A CSRF token is used by the server to ensure that doesn't happen. Laravel *requi
 </form>
 ```
 
-Easy.
+Now when anyone sends a form that Laravel was not expecting from that user, it will be rejected.
 
 ### Processing forms
 
@@ -149,10 +149,11 @@ public function store(Request $request) {
 }
 ```
 
-An interesting thing to note about the validate function is that if validation fails, the rest of the PHP is ignored and instead you are redirected back to the form you submitted to see error messages.
+An interesting thing to note about the validate function is that if validation fails, the rest of the PHP is ignored in that function and instead you are redirected back to the page with the form on it to see error messages.
 
 Here is an example of a "new product" form that uses validation:
 
+```php
 public function store(Request $request) {
 	// Do validation
 	$this->validate($request, [
@@ -167,10 +168,11 @@ public function store(Request $request) {
 
 	// Either redirect user or show a view here
 }
+```
 
 The array keys are the names of the input fields from the form, and the values are the rules. Laravel has a pretty good list of validation rules in the documentation.
 
-If validation fails, as mentioned before, you'll be redirected back to the form itself ready to see error messages. This is what you'd put in your forms to show those messages:
+If validation fails, as mentioned before, you'll be redirected back to the form itself ready to see error messages. This is what you'd put in your forms (after each input field) to show those messages:
 
 ```php
 <input type="text" name="product_name">
@@ -181,3 +183,107 @@ If validation fails, as mentioned before, you'll be redirected back to the form 
 
 It first checks to see if there's an error for `product_name`, and if there is it grabs the first error (because we might have broken multiple rules but we only care about the first one we broke).
 
+Successful form validation runs the remaining code in the store function. This is where you would start putting data into the database with models, explained later.
+
+## Databases
+
+### Migrations
+
+Migrations in Laravel are instructions for how a database should be built, and since it's written in a PHP file you can track it with git. Otherwise you'd have to carry around .sql dumps of your database that could get lost or changed.
+
+Migrations are run by date, and each migration filename starts with a date depending on when it was created. Laravel takes this into account when running them. It's important to *avoid modifying migration files that have already run*. Create a new migration to modify any existing tables or columns as needed. If you change them after they've been run, you'll probably break the ability to undo and re-run them.
+
+Creating a table would use the following terminal command: `php artisan make:migration create_posts_table --create=posts`
+
+This makes a file that looks like the following:
+
+```php
+<?php
+
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Database\Migrations\Migration;
+
+class CreatePostsTable extends Migration
+{
+    /**
+     * Run the migrations.
+     *
+     * @return void
+     */
+    public function up()
+    {
+        Schema::create('posts', function (Blueprint $table) {
+            $table->increments('id');
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     *
+     * @return void
+     */
+    public function down()
+    {
+        Schema::dropIfExists('posts');
+    }
+}
+```
+
+The `up()` function is for when you run a migration. The `down()` function is for when you undo a migration.
+
+The Laravel Documentation contains everything about migrations and how to use them. The only thing you'll want to consider is the logical order of table creation. For example if users can create blog posts, you'd have to ensure the users table exists before the posts table, because the posts table would use a user_id foreign key.
+
+Updating an existing table would use the following command: `php artisan make:migration add_profileimage_to_users_table --table=users`
+
+The two different commands affect how the migration works. See if you can spot the difference between a create migration and one that changes an existing table.
+
+### Seeds
+
+Seeding a table is used for dummy data. It's useful during development of a site so you don't have to keep recreating data every time you rollback and re-run a migration. Live websites with real data should simply use .sql dumps to ensure minimal loss of data if a migration has to be re-run for whatever reason. As mentioned earlier, you shouldn't re-run / edit migrations that have already run. Try creating new migrations to adjust existing tables and columns, and you won't lose data that way. 
+
+### Models (Eloquent)
+
+Each table in your database should have Model file that helps you interact with that table to do tasks like CRUD. When you create a model it actually gives you an almost bare file, but Models are based on another class that has pre-built common functionality. It's only when you have specific instructions to run on a table that you would write anything in the Model file.
+
+Create a model for a table using the following command: `php artisan make:model Posts`
+
+Try to make the model name the same as the table name as Laravel will assume the table name based on the file name unless told otherwise.
+
+#### Reading data from table and sending to a view
+
+You'll need to add the namespace for the model in the controller that uses it. `use App\Posts;`. Without it the controller won't know what you're talking about.
+
+```php
+<?php
+
+namespace App\Http\Controllers;
+use Illuminate\Http\Request;
+use App\Posts;
+
+class HomeController extends Controller
+{
+    public function index() {
+		
+		$allPosts = Posts::all();
+
+		return view('home', compact('allPosts'));
+
+    }
+}
+```
+
+The code above would grab all data from the posts table and send it to the `home.blade.php` template to be rendered via PHP (or the blade templating system):
+
+```php
+<h1>All Products</h1>
+
+<?php foreach($allPosts as $post): ?>
+<article>
+	<h1>{{ $post->title }}</h1>
+	<small>Written on: {{ $post->created_at }}</small>
+	<p>{{ $post->content }}</p>
+</article>
+<?php endforeach; ?>
+```
